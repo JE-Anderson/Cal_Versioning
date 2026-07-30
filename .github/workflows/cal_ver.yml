@@ -1,0 +1,74 @@
+name: Add CalVer Tags
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+          fetch-depth: '0'
+
+    - name: Generate Git Tag
+      id: generate_tag
+      run: |
+        # Get date values for new tag and make new tag prefix
+        YEAR=$(date +"%Y")
+        MONTH=$(date +"%m")
+        DAY=$(date +"%d")
+        
+        NEW_TAG_PREF="v$YEAR.$MONTH.$DAY"
+        NEW_TAG="$NEW_TAG_PREF.1"
+        echo "Before processing the NEW_TAG is $NEW_TAG. Tag may be altered while checking against current tags." 
+        
+        # Get highest version tag
+        CUR_TAG=$(git tag --list --sort=-v:refname | head -n 1)
+        echo "The most recent tag is CUR_TAG=$CUR_TAG"
+        
+        # If no tags at all yet, create first one
+        if [ -z "$CUR_TAG" ]; then 
+        	echo "No change made to new tag - this is the first tag on the repo"
+        else
+        # If tags, check if most recent tag is from today. If not use same tag from last condition
+        	CUR_TAG_YEAR=$(echo "${CUR_TAG:1}" | cut -d'.' -f1)
+        	CUR_TAG_MONTH=$(echo "$CUR_TAG" | cut -d'.' -f2)
+        	CUR_TAG_DAY=$(echo "$CUR_TAG" | cut -d'.' -f3)
+        	
+        	# If most recent not from today, mark first version for the day
+        	# Most recent tag from a previous year
+        	if (( CUR_TAG_YEAR < YEAR )); then
+        		echo "No change made to new tag - cur tag from a past year"
+        	# Most recent tag is from this year (note: no future year tags will exist)
+        	else
+        		# Check if month is from past since we're in same year
+        		if (( CUR_TAG_MONTH < MONTH )); then
+        			echo "No change made to new tag - cur tag from a past month of this year"
+        		# Most recent tag is from this year,month.
+        		else
+        			# Check if day is from past since we're in same year,month
+        			if (( CUR_TAG_DAY < DAY )); then
+        				echo "No change made to new tag - cur tag from a past day of this month"
+        			# Now we're sure the most recent tag is also for today, so need to increment final version by 1
+        			else
+        				DAY_VERSION=$(echo "$CUR_TAG" | cut -d'.' -f4)
+        				let DAY_VERSION++
+        				NEW_TAG="$NEW_TAG_PREF.$DAY_VERSION"
+        				echo "NEW_TAG was updated since CUR_TAG is from the same day. Final NEW_TAG=$NEW_TAG"
+        			fi
+        		fi
+        	fi	
+        fi 
+        echo "The new tag is: $NEW_TAG"
+        echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
+        
+    - name: Push Git Tag
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "github-actions@users.noreply.github.com"
+        git tag $NEW_TAG
+        git push origin $NEW_TAG
